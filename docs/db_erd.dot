@@ -1,0 +1,15 @@
+digraph ERD {
+	graph [rankdir=LR]
+	node [fontname=Helvetica shape=record]
+	sites [label="{sites|{<id> id: UUID (PK, NN)|<display_name> display_name: TEXT (NN)|<tz> tz: TEXT (NN)|<created_at> created_at: DATETIME (NN)}}"]
+	devices [label="{devices|{<id> id: UUID (PK, NN)|<site_id> site_id: UUID (NN, FK)|<model> model: TEXT|<created_at> created_at: DATETIME (NN)}}"]
+	points [label="{points|{<id> id: UUID (PK, NN)|<site_id> site_id: UUID (NN, FK)|<point_name> point_name: TEXT (NN)|<unit> unit: TEXT (NN)|<tags> tags: JSONB (NN)|<active> active: BOOLEAN (NN)|<created_at> created_at: DATETIME (NN)}}"]
+	point_metadata_history [label="{point_metadata_history|{<id> id: UUID (PK, NN)|<point_id> point_id: UUID (NN, FK)|<effective_from> effective_from: DATETIME (NN)|<unit> unit: TEXT (NN)|<tags> tags: JSONB (NN)|<meta_hash> meta_hash: TEXT (NN)|<created_at> created_at: DATETIME (NN)}}"]
+	measurements [label="{measurements|{<id> id: UUID (PK, NN)|<point_id> point_id: UUID (NN, FK)|<measurement_timestamp> measurement_timestamp: DATETIME (NN)|<created_at> created_at: DATETIME (NN)|<point_name> point_name: TEXT (NN)|<unit> unit: TEXT|<value> value: NUMERIC(14, 6) (NN)|<quality> quality: INTEGER|<schema_version> schema_version: INTEGER (NN)|<meta_hash> meta_hash: TEXT}}"]
+	device_state [label="{device_state|{<id> id: UUID (PK, NN, FK)|<last_seen_ts> last_seen_ts: DATETIME (NN)|<last_upload_ts> last_upload_ts: DATETIME|<queue_depth> queue_depth: INTEGER|<agent_version> agent_version: TEXT|<poll_interval_s> poll_interval_s: INTEGER|<cpu_pct> cpu_pct: NUMERIC(5, 2)|<disk_free_gb> disk_free_gb: NUMERIC(10, 2)|<status> status: VARCHAR(8) (NN)|<updated_at> updated_at: DATETIME}}"]
+	devices:site_id -> sites:id [arrowhead=normal]
+	points:site_id -> sites:id [arrowhead=normal]
+	point_metadata_history:point_id -> points:id [arrowhead=normal]
+	measurements:point_id -> points:id [arrowhead=normal]
+	device_state:id -> devices:id [arrowhead=normal]
+}
