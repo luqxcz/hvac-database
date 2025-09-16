@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+import os
 
 
 # revision identifiers, used by Alembic.
@@ -20,8 +21,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Ensure TimescaleDB extension is available
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
+    use_timescale = os.getenv("USE_TIMESCALE", "1").lower() not in {"0", "false", "no"}
+    if use_timescale:
+        # Ensure TimescaleDB extension is available
+        op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
 
     # Drop unique constraint if it duplicates the desired PK
     op.execute(
@@ -57,45 +60,48 @@ def upgrade() -> None:
         """
     )
 
-    # Create hypertable with time + space dimensions
-    op.execute(
-        "SELECT create_hypertable('measurements', 'measurement_timestamp', partitioning_column => 'point_id', number_partitions => 8, if_not_exists => TRUE);"
-    )
-    op.execute(
-        "SELECT add_dimension('measurements', 'point_id', number_partitions => 8, if_not_exists => TRUE);"
-    )
+    if use_timescale:
+        # Create hypertable with time + space dimensions
+        op.execute(
+            "SELECT create_hypertable('measurements', 'measurement_timestamp', partitioning_column => 'point_id', number_partitions => 8, if_not_exists => TRUE);"
+        )
+        op.execute(
+            "SELECT add_dimension('measurements', 'point_id', number_partitions => 8, if_not_exists => TRUE);"
+        )
 
-    # Enable and configure compression
-    op.execute(
-        """
-        ALTER TABLE measurements SET (
-          timescaledb.compress = true,
-          timescaledb.compress_orderby = 'measurement_timestamp DESC',
-          timescaledb.compress_segmentby = 'point_id'
-        );
-        """
-    )
+        # Enable and configure compression
+        op.execute(
+            """
+            ALTER TABLE measurements SET (
+              timescaledb.compress = true,
+              timescaledb.compress_orderby = 'measurement_timestamp DESC',
+              timescaledb.compress_segmentby = 'point_id'
+            );
+            """
+        )
 
-    # Add policies (idempotent)
-    op.execute(
-        "SELECT add_compression_policy('measurements', INTERVAL '7 days', if_not_exists => TRUE);"
-    )
-    op.execute(
-        "SELECT add_retention_policy('measurements', INTERVAL '365 days', if_not_exists => TRUE);"
-    )
+        # Add policies (idempotent)
+        op.execute(
+            "SELECT add_compression_policy('measurements', INTERVAL '7 days', if_not_exists => TRUE);"
+        )
+        op.execute(
+            "SELECT add_retention_policy('measurements', INTERVAL '365 days', if_not_exists => TRUE);"
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    # Remove policies if present
-    op.execute(
-        "SELECT remove_compression_policy('measurements');"
-    )
-    op.execute(
-        "SELECT remove_retention_policy('measurements');"
-    )
+    use_timescale = os.getenv("USE_TIMESCALE", "1").lower() not in {"0", "false", "no"}
+    if use_timescale:
+        # Remove policies if present
+        op.execute(
+            "SELECT remove_compression_policy('measurements');"
+        )
+        op.execute(
+            "SELECT remove_retention_policy('measurements');"
+        )
 
-    # Disable table-level compression settings (hypertable remains)
-    op.execute(
-        "ALTER TABLE measurements SET (timescaledb.compress = false);"
-    )
+        # Disable table-level compression settings (hypertable remains)
+        op.execute(
+            "ALTER TABLE measurements SET (timescaledb.compress = false);"
+        )

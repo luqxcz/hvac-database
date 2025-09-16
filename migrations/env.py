@@ -1,7 +1,8 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import pool
+from sqlalchemy import pool, create_engine
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -10,6 +11,12 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Allow overriding sqlalchemy.url via environment variable
+env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+if env_url:
+    # Escape '%' for ConfigParser interpolation
+    config.set_main_option("sqlalchemy.url", env_url.replace('%', '%%'))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -66,10 +73,15 @@ async def run_async_migrations() -> None:
 
     """
 
+    # Optional SSL for RDS when ALEMBIC_SSL=1
+    require_ssl = os.getenv("ALEMBIC_SSL", "0") == "1"
+    connect_args = {"ssl": True} if require_ssl else {}
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:
@@ -80,8 +92,20 @@ async def run_async_migrations() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-
-    asyncio.run(run_async_migrations())
+    use_sync = os.getenv("ALEMBIC_USE_SYNC", "0") == "1"
+    if use_sync:
+        # Synchronous engine using psycopg2
+        section = config.get_section(config.config_ini_section, {})
+        url = section.get("sqlalchemy.url")
+        # For psycopg2, respect ALEMBIC_SSL with sslmode=require if not in URL
+        require_ssl = os.getenv("ALEMBIC_SSL", "0") == "1"
+        connect_args = {"sslmode": "require"} if (require_ssl and (url and "sslmode=" not in url)) else {}
+        engine = create_engine(url, poolclass=pool.NullPool, connect_args=connect_args, future=True)
+        with engine.connect() as connection:
+            do_run_migrations(connection)
+        engine.dispose()
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():
